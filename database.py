@@ -1,58 +1,92 @@
 from pymongo import MongoClient
-from bson.objectid import ObjectId
 
 # === CONFIGURATION ===
 
-# MongoDB URI (default local setup with no auth). Change if needed.
+# MongoDB URI for local development (default: localhost:27017, no authentication)
 MONGO_URI = "mongodb://localhost:27017/"
 
-DATABASE_NAME = "myDatabase"        # <-- Replace with your actual DB name
-USER_COLLECTION = "users"           # <-- Replace with your actual users collection
-PROJECT_COLLECTION = "projects"     # <-- Replace with your actual projects collection
-SUBTASK_COLLECTION = "subtasks"     # <-- Replace with your actual subtasks collection
-
-# If using string IDs set this to False (default OBJECT_ID)
-USE_OBJECT_ID = True
+# Database and collection
+DATABASE_NAME = "Planner-io"
+USER_COLLECTION = "user-data"
 
 # === CONNECTION SETUP ===
 
-# Connect to the MongoDB server and select the database
 client = MongoClient(MONGO_URI)
 db = client[DATABASE_NAME]
-
-# Reference each collection in the database
 users = db[USER_COLLECTION]
-projects = db[PROJECT_COLLECTION]
-subtasks = db[SUBTASK_COLLECTION]
-
-# === UTILITY ===
-
-# Converts string to ObjectId if needed (MongoDB expects ObjectId by default)
-def build_id(id_val):
-    return ObjectId(id_val) if USE_OBJECT_ID else id_val
 
 # === DELETE FUNCTIONS ===
 
-# Deletes a user document by _id from the users collection
-def delete_user(user_id):
+def delete_user(email):
+    """
+    Deletes a user document by email (used as session identity).
+    """
     try:
-        return users.delete_one({"_id": build_id(user_id)}).deleted_count > 0
+        result = users.delete_one({"email": email})
+        return result.deleted_count > 0
     except Exception as e:
         print(f"Error deleting user: {e}")
         return False
 
-# Deletes a project document by _id from the projects collection
-def delete_project(project_id):
+
+def delete_project_by_group(email, group, project_title):
+    """
+    Deletes a project from a specific project group 
+    (e.g., 'planned', 'current', or 'complete').
+
+    Parameters:
+    - email (str): User's email from session
+    - group (str): One of 'current', 'planned', or 'complete'
+    - project_title (str): Title of the project to remove
+    """
+    if group not in ["current", "planned", "complete"]:
+        return False
     try:
-        return projects.delete_one({"_id": build_id(project_id)}).deleted_count > 0
+        result = users.update_one(
+            {"email": email},
+            {
+                "$pull": {
+                    group: {"title": project_title}
+                }
+            }
+        )
+        return result.modified_count > 0
     except Exception as e:
         print(f"Error deleting project: {e}")
         return False
 
-# Deletes a subtask document by _id from the subtasks collection
-def delete_subtask(subtask_id):
+
+def delete_subtask_by_index(email, group, project_title, task_index):
+    """
+    Deletes a subtask at a specific index from the given project in the user's project list.
+
+    Parameters:
+    - email (str): User's email from session
+    - group (str): The project group (e.g., 'current')
+    - project_title (str): The title of the project
+    - task_index (int): Index of the task in the 'tasks' array
+    """
     try:
-        return subtasks.delete_one({"_id": build_id(subtask_id)}).deleted_count > 0
+        # Find the user
+        user = users.find_one({"email": email})
+        if not user:
+            return False
+
+        projects = user.get(group, [])
+        for project in projects:
+            if project.get("title") == project_title:
+                tasks = project.get("tasks", [])
+                if 0 <= task_index < len(tasks):
+                    tasks.pop(task_index)
+                    break
+                else:
+                    return False
+
+        result = users.update_one(
+            {"email": email},
+            {"$set": {f"{group}": projects}}
+        )
+        return result.modified_count > 0
     except Exception as e:
         print(f"Error deleting subtask: {e}")
         return False

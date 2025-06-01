@@ -2,75 +2,95 @@
 
 ## 1. Overview
 
-This microservice deletes users, projects, and subtasks from a MongoDB database via HTTP DELETE requests.
-It is implemented using FastAPI and uses pymongo for direct database access.
+This microservice allows deletion of users, projects, and subtasks stored
+in a MongoDB collection via a unified `DELETE /deletion` endpoint.
+It is implemented using FastAPI and uses `pymongo` for direct access to MongoDB.
 
 ## 2. Setup Instructions
 
-Install dependencies and run the microservice:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
+```
+
+Run the microservice:
+
+```bash
 uvicorn main:app --reload
 ```
 
-## 3. Configuration
+Setup database with known test user (optional):
 
-Edit database.py:
-
-- DATABASE_NAME: your MongoDB database name
-
-- USER_COLLECTION, PROJECT_COLLECTION, SUBTASK_COLLECTION: your actual collection names
-
-- USE_OBJECT_ID: set to False if your \_id fields are strings (not MongoDB ObjectId)
-
-## 4. Communication Contract
-
-### 4.1 How to Programmatically Request Data
-
-To delete a document, send an HTTP DELETE request to one of the following endpoints:
-
-```http
-DELETE /user/{user_id}
-DELETE /project/{project_id}
-DELETE /subtask/{subtask_id}
+```bash
+python test/setup_user.py
 ```
 
-#### Required Headers:
+## 3. Request Formatting
 
-```http
-Authorization: Bearer faketoken123
+Endpoint:
+
+```bash
+DELETE /deletion
 ```
 
-#### Example Python Request:
+Required Header:
 
-```python
-import requests
-
-BASE = "http://localhost:8000"
-HEADERS = {"Authorization": "Bearer faketoken123"}
-response = requests.delete(f"{BASE}/user/665f123abc...", headers=HEADERS)
-print(response.json())
+```sql
+x-user-email: <email of the user to delete or modify>
 ```
 
-### 4.2 How to Programmatically Receive Data
+### Request Body Formats:
 
-The service will respond with a JSON object.
+Subtask:
+
+```json
+{
+  "project-type": "current",
+  "project-name": "Current Project",
+  "task-index": 0
+}
+```
+
+Project:
+
+```json
+{
+  "project-type": "planned",
+  "project-name": "Planned Project"
+}
+```
+
+User:
+
+```json
+# No body required, only the x-user-email header is needed
+```
+
+## 4. Response Formatting
 
 If successful:
 
 ```json
 {
   "status": "success",
-  "message": "User 665f123abc... has been permanently deleted."
+  "message": "Project 'Planned Project' deleted from planned"
 }
 ```
 
-If the item does not exist:
+If user/project/task is not found:
 
 ```json
 {
-  "detail": "User not found."
+  "detail": "Project not found"
+}
+```
+
+If the request is missing required data:
+
+```json
+{
+  "detail": "Missing project type or name for subtask deletion"
 }
 ```
 
@@ -84,8 +104,4 @@ If the item does not exist:
 
 - Use MongoDB Compass to browse or verify data
 
-- To test the microservice end-to-end, run:
-
-```bash
-python test_delete.py
-```
+- This service does not use session cookies or authentication, instead it relies on the x-user-email header for identification
